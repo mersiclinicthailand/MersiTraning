@@ -7683,7 +7683,7 @@ loadAdminCoreData_ = async function(){
 
 <script>
 /* =========================================================================
-   v14.0 — Sync Integrity + Performance
+   v14.1 — Sync Integrity + Performance + Fast Login
    -------------------------------------------------------------------------
    ชั้นนี้แก้ 3 เรื่องหลัก
 
@@ -8125,7 +8125,55 @@ loadAdminCoreData_ = async function(){
     return __setApiChip_v13(state, th[text] || text, title);
   };
 
-  console.info('[Mersi] v14.0 sync + performance layer active');
+
+  /* =====================================================================
+     [9] อุ่นเครื่องล่วงหน้า  (v14.1)
+     ---------------------------------------------------------------------
+     ทุกคำขอไป Apps Script มีค่าคงที่ ~1.3 วินาที
+     (Google บังคับ redirect จาก /exec ไป googleusercontent.com)
+     บวกกับ "cold start" ถ้าไม่มีใครใช้งานมาสักพัก
+
+     ตอนเปิดหน้า login ผู้ใช้ต้องใช้เวลาพิมพ์รหัสอีก 3-6 วินาทีอยู่แล้ว
+     จึงใช้ช่วงเวลานั้นปลุกเซิร์ฟเวอร์และให้อ่าน Sheet เตรียมไว้ก่อน
+     พอกดเข้าสู่ระบบจริง ข้อมูลพร้อมแล้ว ไม่ต้องรออ่านใหม่
+
+     คำขอนี้ไม่ส่งข้อมูลใด ๆ กลับมา และไม่ต้องใช้ session
+     ===================================================================== */
+  var warmDone = false;
+
+  function prewarmBackend_() {
+    if (warmDone) return;
+    warmDone = true;
+    try {
+      fetch(MERSI_AUTH_API + '?action=warm&_=' + Date.now(),
+            { cache: 'no-store', redirect: 'follow' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { console.info('[Mersi] prewarm', j && j.ms, 'ms'); })
+        .catch(function () { /* ไม่สำเร็จก็ไม่เป็นไร เป็นแค่การอุ่นเครื่อง */ });
+    } catch (e) {}
+  }
+
+  // ยิงทันทีที่หน้าจอ login ปรากฏ
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      setTimeout(prewarmBackend_, 300);
+    });
+  } else {
+    setTimeout(prewarmBackend_, 300);
+  }
+
+  // เผื่อผู้ใช้เปิดเว็บทิ้งไว้นานแล้วค่อยมา login — อุ่นซ้ำตอนเริ่มพิมพ์
+  document.addEventListener('DOMContentLoaded', function () {
+    var idField = document.getElementById('loginEmployeeId');
+    if (idField) {
+      idField.addEventListener('focus', function () {
+        warmDone = false;
+        prewarmBackend_();
+      }, { once: true });
+    }
+  });
+
+  console.info('[Mersi] v14.1 sync + performance layer active');
 })();
 
 </script>
